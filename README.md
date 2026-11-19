@@ -17,7 +17,7 @@ into something you can stand behind in a security review:
    (Terraform, TLS, OIDC, tainted sandbox nodes, VPC CNI NetworkPolicy), with create → test → destroy
    in one run.
 
-Bible (visual walkthrough, architecture, results): [`site/index.html`](site/index.html), also a tab in the Study Bible.
+Bible (visual walkthrough, end-to-end architecture diagram, checks, run commands): [`site/index.html`](site/index.html), deployed on Vercel from this repo and also a tab in the Study Bible.
 
 ## Architecture
 
