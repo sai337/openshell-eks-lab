@@ -1,0 +1,42 @@
+name: ci
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e '.[test]'
+      - name: Policy lint (blocks risky policies)
+        run: oslab lint 'policies/*.yaml'
+      - name: Unit tests
+        run: pytest -q
+      - name: Shell lint
+        run: shellcheck e2e/*.sh infra/eks/*.sh
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Render the pinned OpenShell chart with our values (offline)
+        run: |
+          source versions.env
+          for v in kind eks; do
+            helm template openshell oci://ghcr.io/nvidia/openshell/helm-chart --version "$OPENSHELL_CHART_VERSION" \
+              --namespace openshell --values "infra/helm/values-$v.yaml" \
+              --set agentSandbox.preflight.enabled=false > "/tmp/render-$v.yaml"
+            echo "$v: $(grep -c '^kind:' /tmp/render-$v.yaml) objects"
+          done
+          # The production values must never render anonymous access.
+          if grep -n 'allow_unauthenticated_users = true' /tmp/render-eks.yaml; then
+            echo "values-eks.yaml allows unauthenticated users" >&2; exit 1
+          fi
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform fmt + validate
+        working-directory: infra/eks/terraform
+        run: terraform fmt -check -recursive && terraform init -backend=false -input=false && terraform validate

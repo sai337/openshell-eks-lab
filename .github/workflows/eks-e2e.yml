@@ -1,0 +1,57 @@
+name: eks-e2e
+# Enterprise path, on demand: GitHub OIDC -> your AWS role -> terraform apply
+# -> install OpenShell -> security suite -> terraform destroy. Nothing persists.
+# One-time setup: deploy infra/eks/bootstrap/github-oidc.yaml in a PERSONAL
+# account with a budget, then set repo variables AWS_ROLE_ARN and AWS_REGION.
+on:
+  workflow_dispatch:
+    inputs:
+      keep_cluster:
+        description: "Skip destroy (you pay for it until you run destroy)"
+        type: boolean
+        default: false
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  eks:
+    runs-on: ubuntu-latest
+    environment: eks            # add a required reviewer to this environment
+    timeout-minutes: 90
+    env:
+      TF_IN_AUTOMATION: "1"
+      TARGET: eks
+      OSLAB_DRIVER_CONFIG: e2e/eks-driver-config.json
+      TF_VAR_budget_email: ${{ secrets.BUDGET_EMAIL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_wrapper: false }
+      - uses: azure/setup-helm@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e '.[test]'
+      - name: terraform apply
+        working-directory: infra/eks/terraform
+        run: terraform init -input=false && terraform apply -auto-approve -input=false -var "name=oslab-${{ github.run_id }}" -var "region=${{ vars.AWS_REGION || 'us-west-2' }}"
+      - name: kubeconfig
+        working-directory: infra/eks/terraform
+        run: aws eks update-kubeconfig --name "$(terraform output -raw cluster_name)" --region "${{ vars.AWS_REGION || 'us-west-2' }}"
+      - name: Install OpenShell + build image
+        run: |
+          # On EKS the gateway is still reached over a port-forward from the runner,
+          # with TLS and no anonymous users; CI uses the chart's client mTLS bundle.
+          bash infra/eks/install.sh
+      - name: Security suite on EKS
+        run: OSLAB_SANDBOX_IMAGE="$(cat .work/sandbox-image-ref)" bash e2e/run.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: security-suite-eks, path: evals/results/ }
+      - name: terraform destroy
+        if: always() && !inputs.keep_cluster
+        working-directory: infra/eks/terraform
+        run: terraform destroy -auto-approve -input=false -var "name=oslab-${{ github.run_id }}" -var "region=${{ vars.AWS_REGION || 'us-west-2' }}"

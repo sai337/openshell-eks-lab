@@ -1,0 +1,21 @@
+# POC values (kind / laptop / CI). Mirrors OpenShell's own CI values.
+# Plaintext + unauthenticated is acceptable ONLY because the gateway is reached
+# over a local port-forward on a throwaway cluster. Never use this on EKS.
+gatewayConfig:
+  openshell.drivers.kubernetes:
+    image_pull_policy: if_not_present
+  openshell.gateway.auth:
+    allow_unauthenticated_users: true
+server:
+  disableTls: true
+  telemetryEnabled: false
+  auth:
+    allowUnauthenticatedUsers: true
+sandbox:
+  image:
+    pullPolicy: if_not_present
+supervisor:
+  image:
+    pullPolicy: if_not_present
+networkPolicy:
+  enabled: true

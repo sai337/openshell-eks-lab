@@ -1,0 +1,12 @@
+# Layered on values-eks.yaml ONLY for the throwaway CI cluster in eks-e2e.yml.
+# TLS stays on. The gateway Service is ClusterIP and reached only through
+# `kubectl port-forward`, which AWS IAM + Kubernetes RBAC already gate, so the
+# run needs no IdP. Real environments delete this file and use server.oidc.
+server:
+  oidc:
+    issuer: ""
+  auth:
+    allowUnauthenticatedUsers: true
+gatewayConfig:
+  openshell.gateway.auth:
+    allow_unauthenticated_users: true

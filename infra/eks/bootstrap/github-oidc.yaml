@@ -1,0 +1,49 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  One-time bootstrap for eks-e2e.yml: lets GitHub Actions in ONE repo assume a
+  role through OIDC (no long-lived keys). Deploy in a personal lab account:
+  aws cloudformation deploy --template-file github-oidc.yaml --stack-name oslab-github-oidc
+  --capabilities CAPABILITY_NAMED_IAM --parameter-overrides Repo=sai337/openshell-eks-lab
+Parameters:
+  Repo:
+    Type: String
+    Description: owner/repo allowed to assume the role
+  CreateProvider:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: Set false if the account already has the GitHub OIDC provider
+Conditions:
+  MakeProvider: !Equals [!Ref CreateProvider, "true"]
+Resources:
+  GitHubOIDC:
+    Type: AWS::IAM::OIDCProvider
+    Condition: MakeProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-deploy"
+      MaxSessionDuration: 7200
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                # only the protected `eks` environment of this repo
+                token.actions.githubusercontent.com:sub: !Sub "repo:${Repo}:environment:eks"
+      # Lab scope. Tighten to the exact services Terraform touches before reuse.
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+Outputs:
+  RoleArn:
+    Value: !GetAtt DeployRole.Arn
+    Description: Set as repo variable AWS_ROLE_ARN

@@ -1,0 +1,20 @@
+# Enterprise values (EKS), checked against the v0.1.9 chart values.yaml.
+# TLS on, no unauthenticated users, OIDC for people, telemetry off.
+# Fill the REPLACE_ value from your IdP. See docs/ENTERPRISE.md.
+server:
+  telemetryEnabled: false
+  disableTls: false
+  auth:
+    allowUnauthenticatedUsers: false
+  dataStorageSize: 20Gi
+  dataStorageClass: gp3
+  oidc:
+    issuer: REPLACE_OIDC_ISSUER     # e.g. https://<your-okta-domain>/oauth2/<server-id>
+    audience: openshell-cli         # the API audience, not the CLI client id
+networkPolicy:
+  enabled: true
+# The gateway runs on the system node group. Sandboxes are placed per sandbox
+# with --driver-config-json (see e2e/eks-driver-config.json), so they land only
+# on the tainted sandbox node group Terraform creates.
+nodeSelector:
+  workload: system

@@ -1,0 +1,49 @@
+name: e2e-kind
+# The POC end to end: kind + Calico + Agent Sandbox + OpenShell, then the
+# hostile-agent suite. Results are uploaded and committed by the nightly run.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 9 * * *"   # nightly, catches upstream drift
+permissions:
+  contents: read
+  packages: read
+concurrency:
+  group: e2e-kind-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      OPENSHELL_TELEMETRY_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: azure/setup-helm@v4
+      - uses: helm/kind-action@v1.12.0
+        with:
+          install_only: true
+      - run: pip install -e '.[test]'
+      - name: Log in to GHCR (public images; avoids anonymous pull limits)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Bring up the POC
+        run: bash e2e/up.sh
+      - name: Run the security suite
+        run: bash e2e/run.sh
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide || true
+          kubectl -n openshell logs statefulset/openshell --tail=300 || true
+          kubectl get sandboxes.agents.x-k8s.io -A || true
+          kubectl get networkpolicy -A || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-suite-kind
+          path: evals/results/

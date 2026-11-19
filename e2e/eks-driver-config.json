@@ -1,0 +1,1 @@
+{"kubernetes":{"pod":{"node_selector":{"workload":"agent-sandbox"},"tolerations":[{"key":"agent-sandbox","operator":"Equal","value":"true","effect":"NoSchedule"}]}}}
