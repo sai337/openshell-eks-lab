@@ -1,0 +1,25 @@
+[project]
+name = "oslab"
+version = "0.1.0"
+description = "Policy-as-code checks and a hostile-agent security suite for NVIDIA OpenShell sandboxes on Kubernetes"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "sai337" }]
+dependencies = ["PyYAML>=6.0.2,<7"]
+
+[project.optional-dependencies]
+test = ["pytest>=8.3,<9"]
+
+[project.scripts]
+oslab = "oslab.cli:main"
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["app"]
+
+[tool.pytest.ini_options]
+pythonpath = ["app"]
+testpaths = ["tests/unit"]

@@ -1,0 +1,10 @@
+# Baseline: no network policy at all, so every outbound connection is denied.
+# Filesystem: system paths read-only, only /sandbox and /tmp writable.
+version: 1
+
+filesystem_policy:
+  include_workdir: true
+  read_only: [/bin, /usr, /lib, /proc, /dev/urandom, /app, /etc, /var/log]
+  read_write: [/sandbox, /tmp, /dev/null]
+landlock:
+  compatibility: best_effort
