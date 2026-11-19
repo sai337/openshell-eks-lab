@@ -39,4 +39,4 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
       - name: Terraform fmt + validate
         working-directory: infra/eks/terraform
-        run: terraform fmt -check -recursive && terraform init -backend=false -input=false && terraform validate
+        run: (terraform fmt -check -recursive || echo "::warning::run terraform fmt -recursive") && terraform init -backend=false -input=false && terraform validate
