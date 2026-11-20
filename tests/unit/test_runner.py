@@ -138,3 +138,11 @@ def test_not_ready_sandbox_is_an_error_never_a_pass():
     assert summary["counts"]["pass"] == 0
     assert summary["counts"]["error"] == len(summary["results"])
     assert summary["gate"] == "fail"
+
+
+def test_cli_failure_detection():
+    from oslab.executors import is_cli_failure
+
+    assert is_cli_failure("Error:   \u00d7 sandbox 'os-deny-all-c92a26' is not ready (phase: Completed)")
+    # a blocked curl is a real, scorable result
+    assert not is_cli_failure("curl: (7) Failed to connect to pypi.org port 443 after 3 ms: Could not connect to server")

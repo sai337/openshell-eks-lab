@@ -18,8 +18,11 @@ class ExecResult:
     infra_error: bool = False  # the command never ran (sandbox not ready, gateway down)
 
 
-# CLI messages that mean "the command did not run", which must never count as "blocked".
-INFRA_MARKERS = ("is not ready", "sandbox not found", "transport error", "failed to connect", "connection refused")
+# The OpenShell CLI reports its own failures as `Error:  × ...` (miette). Only those
+# mean "the command did not run"; a workload's own errors (curl: (7) Failed to
+# connect ...) are real results and must be scored.
+def is_cli_failure(output: str) -> bool:
+    return "Error:" in output and "\u00d7" in output
 
 
 class Executor(Protocol):
@@ -85,7 +88,7 @@ class OpenShellExecutor:
             )
         except subprocess.TimeoutExpired:
             return ExecResult(124, "timed out", 90.0)
-        infra = r.rc != 0 and any(m in r.output.lower() for m in INFRA_MARKERS)
+        infra = r.rc != 0 and is_cli_failure(r.output)
         return ExecResult(r.rc, r.output, r.seconds, infra)
 
     def policy_update(self, name: str, rule_name: str, binary: str, endpoint: str) -> None:
@@ -116,7 +119,7 @@ class FakeExecutor:
         self.log.append(("exec", name, command))
         rc = self.behaviour(sb["policy"], command, sb)
         if rc == -1:  # test hook: the command never ran
-            return ExecResult(1, "sandbox 'x' is not ready (phase: Completed)", 0.01, True)
+            return ExecResult(1, "Error:   \u00d7 sandbox 'x' is not ready (phase: Completed)", 0.01, True)
         return ExecResult(rc, "", 0.01)
 
     def policy_update(self, name: str, rule_name: str, binary: str, endpoint: str) -> None:
