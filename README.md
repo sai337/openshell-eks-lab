@@ -84,7 +84,7 @@ OpenShell sends anonymous telemetry by default; this repo turns it off everywher
 | Policy-as-code + lint | 10 | `app/oslab/policy_lint.py`, 18 parametrised rule tests | - |
 | Security suite design | 9 | `evals/datasets/security-cases.yaml` (18 cases, 8 critical) | DNS-exfil and provider-credential cases (next) |
 | Runner, gate, reports | 10 | `tests/unit/test_runner.py` (secure model passes, leaky model fails with named blockers) | - |
-| POC e2e on kind | 8 | `e2e/up.sh`, `e2e-kind.yml` mirror OpenShell's own CI | first green run in Actions (results land in `evals/results/`) |
+| POC e2e on kind | 10 | 18/18 pass, gate PASS, on a real gateway: [run 44689617405](https://github.com/sai337/openshell-eks-lab/actions/runs/44689617405) | - |
 | EKS enterprise path | 7 | Terraform, values-eks, OIDC bootstrap, `eks-e2e.yml` | one `eks-e2e` run in your lab account |
 | Docs, threat model, runbook | 9 | `docs/` | add measured numbers from the first runs to the blog draft |
 
