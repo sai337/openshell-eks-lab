@@ -16,7 +16,7 @@ port-forwards the gateway and registers it as `oslab-kind`.
 
 Try one case by hand:
 ```bash
-openshell sandbox create --name try --from oslab-agent:dev --policy policies/research-readonly.yaml --no-auto-providers --no-tty -- true
+openshell sandbox create --name try --from oslab-agent:dev --policy policies/research-readonly.yaml --no-auto-providers --no-tty --detach -- sleep infinity
 openshell sandbox exec -n try --no-login-shell -- curl -s -X POST https://pypi.org/simple/   # policy_denied
 openshell logs try --since 5m --source sandbox
 openshell sandbox delete try

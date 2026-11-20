@@ -15,6 +15,11 @@ class ExecResult:
     rc: int
     output: str
     seconds: float
+    infra_error: bool = False  # the command never ran (sandbox not ready, gateway down)
+
+
+# CLI messages that mean "the command did not run", which must never count as "blocked".
+INFRA_MARKERS = ("is not ready", "sandbox not found", "transport error", "failed to connect", "connection refused")
 
 
 class Executor(Protocol):
@@ -55,17 +60,33 @@ class OpenShellExecutor:
         if driver_cfg:  # path to a JSON file, e.g. e2e/eks-driver-config.json
             with open(driver_cfg) as fh:
                 args += ["--driver-config-json", fh.read().strip()]
-        self._run([*args, "--", "true"], timeout=600)
+        # --detach keeps a long-running main process; `-- true` would exit and the
+        # sandbox would go to phase Completed, where every exec fails.
+        self._run([*args, "--detach", "--", "sleep", "infinity"], timeout=600)
+        self.wait_ready(name)
+
+    def wait_ready(self, name: str, timeout: float = 240) -> None:
+        """Canary: the sandbox counts as ready only when a trivial exec succeeds."""
+        end = time.monotonic() + timeout
+        last = None
+        while time.monotonic() < end:
+            last = self.exec(name, "true")
+            if last.rc == 0:
+                return
+            time.sleep(3)
+        raise RuntimeError(f"sandbox {name} never became ready: {last.output if last else ''}")
 
     def exec(self, name: str, command: str) -> ExecResult:
         try:
-            return self._run(
+            r = self._run(
                 ["sandbox", "exec", "-n", name, "--no-login-shell", "--", "/bin/bash", "-c", command],
                 check=False,
                 timeout=90,
             )
         except subprocess.TimeoutExpired:
             return ExecResult(124, "timed out", 90.0)
+        infra = r.rc != 0 and any(m in r.output.lower() for m in INFRA_MARKERS)
+        return ExecResult(r.rc, r.output, r.seconds, infra)
 
     def policy_update(self, name: str, rule_name: str, binary: str, endpoint: str) -> None:
         self._run(
@@ -93,7 +114,10 @@ class FakeExecutor:
     def exec(self, name: str, command: str) -> ExecResult:
         sb = self.sandboxes[name]
         self.log.append(("exec", name, command))
-        return ExecResult(self.behaviour(sb["policy"], command, sb), "", 0.01)
+        rc = self.behaviour(sb["policy"], command, sb)
+        if rc == -1:  # test hook: the command never ran
+            return ExecResult(1, "sandbox 'x' is not ready (phase: Completed)", 0.01, True)
+        return ExecResult(rc, "", 0.01)
 
     def policy_update(self, name: str, rule_name: str, binary: str, endpoint: str) -> None:
         self.sandboxes[name]["rules"].append((rule_name, binary, endpoint))

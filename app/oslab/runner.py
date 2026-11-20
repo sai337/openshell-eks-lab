@@ -53,6 +53,10 @@ def _run_case(ex: Executor, sandbox: str, case: Case) -> CaseResult:
                 return res
             continue
         r = ex.exec(sandbox, step.command)
+        if r.infra_error:  # never let "it didn't run" look like "it was blocked"
+            res.steps.append(StepResult(step.command, step.expect, r.rc, False, round(r.seconds, 3), r.output[-600:]))
+            res.status, res.note = "error", "command did not run in the sandbox (infrastructure error)"
+            return res
         ok = (r.rc == 0) if step.expect == "success" else (r.rc != 0)
         res.steps.append(StepResult(step.command, step.expect, r.rc, ok, round(r.seconds, 3), r.output[-600:]))
         if not ok:

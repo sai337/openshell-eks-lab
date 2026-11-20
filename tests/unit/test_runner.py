@@ -130,3 +130,11 @@ def test_sandbox_names_fit_openshell_limit():
     assert names and all(len(n) <= MAX_SANDBOX_NAME for n in names), names
     assert len({n for n in names}) == len(names)
     assert len(sandbox_name("os", "a-very-long-policy-name-here")) <= MAX_SANDBOX_NAME
+
+
+def test_not_ready_sandbox_is_an_error_never_a_pass():
+    """Regression: a Completed sandbox made every 'must be blocked' case look like a pass."""
+    summary = run_suite(FakeExecutor(lambda p, c, s: 0 if c.startswith("command -v") else -1), load_cases(CASES), POLICIES)
+    assert summary["counts"]["pass"] == 0
+    assert summary["counts"]["error"] == len(summary["results"])
+    assert summary["gate"] == "fail"
