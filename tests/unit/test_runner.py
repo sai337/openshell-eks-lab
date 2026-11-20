@@ -119,3 +119,14 @@ def test_bad_datasets_rejected(tmp_path, body, msg):
     f.write_text(body)
     with pytest.raises(CaseError, match=msg):
         load_cases(f)
+
+
+def test_sandbox_names_fit_openshell_limit():
+    from oslab.runner import MAX_SANDBOX_NAME, sandbox_name
+
+    ex = FakeExecutor(secure_sandbox)
+    run_suite(ex, load_cases(CASES), POLICIES)
+    names = [e[1] for e in ex.log if e[0] == "create"]
+    assert names and all(len(n) <= MAX_SANDBOX_NAME for n in names), names
+    assert len({n for n in names}) == len(names)
+    assert len(sandbox_name("os", "a-very-long-policy-name-here")) <= MAX_SANDBOX_NAME

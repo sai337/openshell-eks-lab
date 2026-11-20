@@ -60,7 +60,17 @@ def _run_case(ex: Executor, sandbox: str, case: Case) -> CaseResult:
     return res
 
 
-def run_suite(ex: Executor, cases: list[Case], policies_dir: str | Path, prefix: str = "oslab") -> dict:
+MAX_SANDBOX_NAME = 19  # OpenShell v0.1.9 MAX_ROUTABLE_NAME_LEN (grpc/validation.rs)
+
+
+def sandbox_name(prefix: str, policy: str) -> str:
+    """Short, unique, DNS-safe: e.g. 'os-research-1a2b3c' (<= 19 chars)."""
+    room = MAX_SANDBOX_NAME - len(prefix) - 8  # two dashes + 6 hex
+    short = policy[:max(room, 1)].rstrip("-")
+    return f"{prefix}-{short}-{uuid.uuid4().hex[:6]}"
+
+
+def run_suite(ex: Executor, cases: list[Case], policies_dir: str | Path, prefix: str = "os") -> dict:
     policies_dir = Path(policies_dir)
     groups: dict[str, list[Case]] = defaultdict(list)
     for c in cases:
@@ -72,7 +82,7 @@ def run_suite(ex: Executor, cases: list[Case], policies_dir: str | Path, prefix:
     for key, group in groups.items():
         policy = group[0].policy
         policy_path = policies_dir / f"{policy}.yaml"
-        name = f"{prefix}-{policy}-{uuid.uuid4().hex[:6]}"[:50]
+        name = sandbox_name(prefix, policy)
         try:
             ex.create(name, str(policy_path))
         except Exception as e:

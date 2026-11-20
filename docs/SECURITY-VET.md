@@ -7,7 +7,7 @@ provenance + pinning + a targeted scan + containment, and the residual risk is s
 | Component | Source | Pin | Verdict |
 |---|---|---|---|
 | OpenShell CLI, gateway, chart | github.com/NVIDIA/OpenShell (vendor org, Apache-2.0, DCO, CodeQL in CI) | v0.1.9 = `ce58cf8e9b953281352d98a637e41616295b1318`, chart 0.1.9 | AMBER: use with telemetry off |
-| Agent Sandbox | github.com/kubernetes-sigs/agent-sandbox (Kubernetes SIG Apps) | v1.0.3 = `d5a63e31070255cc68f95d3991ee366165c5acf3` | GREEN |
+| Agent Sandbox | github.com/kubernetes-sigs/agent-sandbox (Kubernetes SIG Apps) | v1.0.3, commit `527d9346fe1d237dea5c003f3c720531c7bab1df` | GREEN |
 | Calico | projectcalico/calico manifest | v3.30.3 (same pin as OpenShell CI) | GREEN |
 | python:3.13-slim base | Docker official image | tag; pin by digest in your registry | GREEN |
 
