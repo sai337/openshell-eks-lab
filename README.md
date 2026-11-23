@@ -91,6 +91,18 @@ OpenShell sends anonymous telemetry by default; this repo turns it off everywher
 Upstream status: NVIDIA marks the OpenShell Helm chart experimental and not for production.
 The EKS path here is a hardened pilot, not a production claim.
 
+## Docs
+
+| Doc | What it covers |
+|---|---|
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | EKS end to end from a laptop or Kiro: provision, install, test, tear down |
+| [docs/PROMOTION.md](docs/PROMOTION.md) | sbx → staging → canary → prod, gates G0–G5, the G2 policy-diff gate |
+| [docs/EVALS.md](docs/EVALS.md) | how results are scored, results so far, how to add a case |
+| [docs/TEST-CASES.md](docs/TEST-CASES.md) | every test case with its threat and pass rule |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [THREAT-MODEL](docs/THREAT-MODEL.md) · [RUNBOOK](docs/RUNBOOK.md) · [SECURITY-VET](docs/SECURITY-VET.md) | design, threats, fixes, third-party vetting |
+| [article/](article) | the write-up, LinkedIn copy and images |
+| [.kiro/steering/project.md](.kiro/steering/project.md) | rules and definition of done for an agent running the deployment |
+
 ## Licence
 
 Apache-2.0

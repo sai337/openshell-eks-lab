@@ -13,6 +13,7 @@ from datetime import date
 from . import report
 from .cases import load_cases
 from .executors import OpenShellExecutor
+from .policy_diff import diff_files
 from .policy_lint import lint_files
 from .runner import run_suite
 
@@ -28,6 +29,20 @@ def cmd_lint(args: argparse.Namespace) -> int:
     errors = [f for f in findings if f.level == "error"]
     print(f"{len(files)} files, {len(errors)} errors, {len(findings) - len(errors)} warnings")
     return 1 if errors else 0
+
+
+def cmd_diff(args: argparse.Namespace) -> int:
+    changes = diff_files(args.approved, args.candidate)
+    for c in changes:
+        print(c)
+    widen = [c for c in changes if c.widening]
+    if not changes:
+        print("no policy change")
+    if widen and not args.approved_by:
+        print(f"G2 FAIL: {len(widen)} widening change(s) need owner + security approval (--approved-by)")
+        return 1
+    print("G2 PASS" + (f" (widening approved by {args.approved_by})" if widen else ""))
+    return 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -55,6 +70,11 @@ def main(argv: list[str] | None = None) -> int:
     pl = sub.add_parser("lint", help="check policies against the repo's safety rules")
     pl.add_argument("files", nargs="+")
     pl.set_defaults(fn=cmd_lint)
+    pd = sub.add_parser("policy-diff", help="G2 gate: block unapproved widening between two policies")
+    pd.add_argument("approved", help="policy currently approved for the target zone")
+    pd.add_argument("candidate", help="policy the bundle wants in that zone")
+    pd.add_argument("--approved-by", help="who approved the widening (from the promotion PR)")
+    pd.set_defaults(fn=cmd_diff)
     pr = sub.add_parser("run", help="run the security suite against a live gateway")
     pr.add_argument("--cases", default="evals/datasets/security-cases.yaml")
     pr.add_argument("--policies", default="policies")

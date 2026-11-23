@@ -23,7 +23,7 @@ REPO="$(terraform -chdir="$TF" output -raw ecr_repository_url)"
 REGION="$(terraform -chdir="$TF" output -raw region)"
 TAG="$(git -C "$ROOT" rev-parse --short HEAD)"
 aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "${REPO%%/*}"
-docker build -t "$REPO:$TAG" "$ROOT/sandbox-image"
+docker build --platform linux/amd64 -t "$REPO:$TAG" "$ROOT/sandbox-image"  # EKS nodes are x86_64
 docker push "$REPO:$TAG"
 DIGEST="$(docker inspect --format '{{index .RepoDigests 0}}' "$REPO:$TAG")"
 echo "$DIGEST" > "$WORK/sandbox-image-ref"
