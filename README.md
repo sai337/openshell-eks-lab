@@ -1,5 +1,7 @@
 # openshell-eks-lab
 
+> New here? Read [docs/GUIDE.md](docs/GUIDE.md) first: the whole project in plain words, every component, every flow, every command, and how logs and metrics get out. For tomorrow's EKS run, follow [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
 **Run untrusted AI agents on Kubernetes with NVIDIA OpenShell, and prove the sandbox holds.**
 
 OpenShell puts every agent in a sandbox with a policy proxy in front of it. This repo turns that

@@ -53,8 +53,124 @@ a{color:var(--accent)}.links a{display:block;font-weight:600;margin:4px 0}
 <marker id="arrg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5 0 10z" style="fill:var(--good)"/></marker>
 </defs></svg><header><div class="eyebrow">openshell-eks-lab · bible</div><h1>NVIDIA OpenShell on Kubernetes: prove the sandbox holds</h1>
 <p class="lede">Every agent runs behind a policy proxy it cannot get around. This lab writes the policies as code, attacks the sandbox with 18 things a hijacked agent would try, and runs the same suite on kind and on EKS.</p><div class="meta"><span class="pill">As of 20 Nov 2026</span><span class="pill">OpenShell v0.1.9 · chart 0.1.9</span><span class="pill">kind POC: 18/18 pass</span><span class="pill">Agent Sandbox v1.0.3</span><span class="pill">Telemetry off</span></div></header>
-<nav class="rail"><a href="#verdict">In one look</a><a href="#arch">Architecture</a><a href="#flow-s">End to end</a><a href="#checks">The checks</a><a href="#poc">POC vs enterprise</a><a href="#compare">vs the other lab</a><a href="#risks">Gotchas</a><a href="#score">Scorecard</a><a href="#try">Run it</a><a href="#sources">Sources</a></nav>
+<nav class="rail"><a href="#simple">Start here</a><a href="#lifecycle">One request</a><a href="#nodes">Nodes and pods</a><a href="#components">Components</a><a href="#vsopenshell">vs gVisor, Substrate</a><a href="#policyfile">Policy line by line</a><a href="#agent">The lab agent</a><a href="#sessions">Users and state</a><a href="#telemetry">Logs and metrics</a><a href="#verdict">In one look</a><a href="#arch">Architecture</a><a href="#flow-s">End to end</a><a href="#checks">The checks</a><a href="#poc">POC vs enterprise</a><a href="#compare">vs the other lab</a><a href="#risks">Gotchas</a><a href="#score">Scorecard</a><a href="#try">Run it</a><a href="#sources">Sources</a></nav>
 <main>
+<section id="simple"><h2>Start here: the whole idea in plain words</h2>
+<div class="card"><p><b>The problem.</b> An AI agent runs code and calls the internet on your behalf. If a prompt injection hijacks it, it will try to read secrets, call your cloud metadata endpoint, upload data, or reach the Kubernetes API. A normal container lets it.</p>
+<p><b>What OpenShell does.</b> Every agent gets its own sandbox, and every network connection it opens goes to a guard (the <i>supervisor</i>) that checks a written rulebook (the <i>policy</i>) before anything leaves: which website, which port, which program is asking, and whether it may only read or also write. Secrets stay with the guard, never in the agent. Every decision is written to a logbook (OCSF events).</p></div>
+<h3>Think of it as a guarded office</h3>
+<div class="tablewrap"><table><tr><th>OpenShell word</th><th>Plain meaning</th><th>Office version</th></tr>
+<tr><td class="mono">Gateway</td><td>Control plane: creates sandboxes, stores policies and credentials, authenticates you</td><td>Security office at reception</td></tr>
+<tr><td class="mono">Sandbox</td><td>One isolated place where one agent works</td><td>A private office with no windows</td></tr>
+<tr><td class="mono">Workload pod</td><td>The pod running the agent's image and processes</td><td>The desk inside the office</td></tr>
+<tr><td class="mono">Supervisor</td><td>Trusted process outside the agent's reach that checks every connection</td><td>A guard at the office door</td></tr>
+<tr><td class="mono">Policy</td><td>YAML rulebook: files, programs, hosts, HTTP methods</td><td>The guard's rulebook</td></tr>
+<tr><td class="mono">Provider</td><td>A stored credential the supervisor adds to approved requests</td><td>The key cabinet only the guard can open</td></tr>
+<tr><td class="mono">Landlock, seccomp</td><td>Kernel features that lock files and system calls inside the sandbox</td><td>Locked drawers inside the office</td></tr>
+<tr><td class="mono">NetworkPolicy</td><td>Kubernetes rule that the workload has no route out except the supervisor</td><td>No windows, one door</td></tr>
+<tr><td class="mono">Agent Sandbox controller</td><td>kubernetes-sigs controller that turns a Sandbox resource into pods</td><td>The building crew</td></tr>
+<tr><td class="mono">OCSF events</td><td>Structured allow/deny log lines (Open Cybersecurity Schema Framework)</td><td>The guard's logbook</td></tr></table></div>
+</section>
+
+<section id="lifecycle"><h2>One request, every component</h2><p class="muted">Steps 1-3 happen once when the sandbox is created. Steps 4-6 happen on every connection the agent opens.</p>
+<div class="card diagram"><svg viewBox="0 0 680 400" style="min-width:600px" role="img" aria-label="OpenShell sandbox creation and request path">
+<g style="font:14px 'IBM Plex Sans',sans-serif">
+<rect x="20" y="30" width="190" height="60" rx="12" style="fill:var(--surface);stroke:var(--muted)"/><text x="115" y="56" text-anchor="middle" style="fill:var(--ink)">You: openshell CLI</text><text x="115" y="75" text-anchor="middle" style="fill:var(--muted);font-size:12px">or SDK, or harness</text>
+<rect x="240" y="30" width="190" height="60" rx="12" style="fill:var(--surface);stroke:var(--accent)"/><text x="335" y="56" text-anchor="middle" style="fill:var(--ink)">Gateway</text><text x="335" y="75" text-anchor="middle" style="fill:var(--muted);font-size:12px">policies, creds, auth</text>
+<rect x="460" y="30" width="190" height="60" rx="12" style="fill:var(--surface);stroke:var(--accent)"/><text x="555" y="56" text-anchor="middle" style="fill:var(--ink)">Agent Sandbox ctrl</text><text x="555" y="75" text-anchor="middle" style="fill:var(--muted);font-size:12px">Sandbox CR to pods</text>
+<rect x="240" y="170" width="190" height="60" rx="12" style="fill:var(--surface);stroke:var(--accent)"/><text x="335" y="196" text-anchor="middle" style="fill:var(--ink)">Supervisor pod</text><text x="335" y="215" text-anchor="middle" style="fill:var(--muted);font-size:12px">policy proxy (trusted)</text>
+<rect x="460" y="170" width="190" height="60" rx="12" style="fill:var(--surface);stroke:var(--warn)"/><text x="555" y="196" text-anchor="middle" style="fill:var(--ink)">Workload pod</text><text x="555" y="215" text-anchor="middle" style="fill:var(--muted);font-size:12px">the agent (untrusted)</text>
+<rect x="20" y="310" width="190" height="60" rx="12" style="fill:var(--surface);stroke:var(--bad);stroke-dasharray:5 4"/><text x="115" y="336" text-anchor="middle" style="fill:var(--ink)">Denied</text><text x="115" y="355" text-anchor="middle" style="fill:var(--muted);font-size:12px">refused or HTTP 403</text>
+<rect x="240" y="310" width="190" height="60" rx="12" style="fill:var(--surface);stroke:var(--good)"/><text x="335" y="336" text-anchor="middle" style="fill:var(--ink)">Allowed sites</text><text x="335" y="355" text-anchor="middle" style="fill:var(--muted);font-size:12px">pypi.org, GET only</text>
+<rect x="460" y="310" width="190" height="60" rx="12" style="fill:var(--surface);stroke:var(--muted)"/><text x="555" y="336" text-anchor="middle" style="fill:var(--ink)">OCSF logbook</text><text x="555" y="355" text-anchor="middle" style="fill:var(--muted);font-size:12px">openshell logs</text>
+<g style="stroke:var(--muted);stroke-width:2;fill:none"><path d="M210 60H236" marker-end="url(#arr)"/><path d="M430 60H456" marker-end="url(#arr)"/><path d="M555 90V166" marker-end="url(#arr)"/><path d="M335 90V166" marker-end="url(#arr)"/><path d="M460 200H434" marker-end="url(#arr)"/><path d="M410 230L520 306" style="stroke-dasharray:5 4" marker-end="url(#arr)"/></g>
+<path d="M335 230V306" style="stroke:var(--good);stroke-width:2;fill:none" marker-end="url(#arrg)"/>
+<path d="M260 230L130 306" style="stroke:var(--bad);stroke-width:2;fill:none;stroke-dasharray:6 5" marker-end="url(#arrb)"/>
+<g style="fill:var(--muted);font:600 12px 'IBM Plex Mono',monospace"><text x="216" y="50">1</text><text x="436" y="50">2</text><text x="563" y="132">3 pods</text><text x="343" y="132">policy, creds</text><text x="436" y="190">4</text><text x="343" y="272">5</text><text x="150" y="262">6</text></g>
+</g></svg></div>
+<div class="steps">
+<div class="card step"><b>1</b><strong>Ask for a sandbox</strong><div class="muted"><span class="mono">openshell sandbox create --name os-net-01 --from oslab-agent:dev --policy deny-all.yaml --detach -- sleep infinity</span>. The CLI talks to the gateway over mTLS (kind) or OIDC (EKS).</div></div>
+<div class="card step"><b>2</b><strong>Gateway records it</strong><div class="muted">Validates the policy, stores the sandbox record, and creates a <span class="mono">Sandbox</span> custom resource through its Kubernetes compute driver.</div></div>
+<div class="card step"><b>3</b><strong>Pods appear</strong><div class="muted">The Agent Sandbox controller builds the workload pod and the separate supervisor pod. OpenShell writes NetworkPolicies so the workload can talk only to its supervisor. Upstream design: the agent does not start until the supervisor confirms the fence.</div></div>
+<div class="card step"><b>4</b><strong>Agent opens a connection</strong><div class="muted">e.g. <span class="mono">curl https://pypi.org/simple/</span>. It cannot go straight out; the request travels to the supervisor, which learns the real program behind it (<span class="mono">/usr/bin/curl</span>).</div></div>
+<div class="card step"><b>5</b><strong>Rulebook says yes</strong><div class="muted">Host, port and program match a rule. With <span class="mono">protocol: rest</span> the supervisor opens the TLS and checks the method: <span class="mono">read-only</span> allows GET, HEAD, OPTIONS. It adds provider credentials if the rule allows, then connects.</div></div>
+<div class="card step"><b>6</b><strong>Or no</strong><div class="muted">Unknown host: connection refused. Allowed host, forbidden method (POST on read-only): HTTP 403 <span class="mono">policy_denied</span>. Either way an OCSF event records who, what, where and why.</div></div>
+</div>
+</section>
+
+<section id="nodes"><h2>Nodes, pods and who creates what</h2>
+<div class="grid">
+<div class="card"><h3>Nodes (EKS)</h3><div class="muted">Two node groups from our Terraform: <span class="mono">system</span> (gateway, Agent Sandbox controller) and <span class="mono">agent-sandbox</span> (tainted and labelled, only sandboxes). Sandboxes are steered there with <span class="mono">--driver-config-json</span> (node selector + toleration, file <span class="mono">e2e/eks-driver-config.json</span>).</div></div>
+<div class="card"><h3>Gateway</h3><div class="muted">A StatefulSet in namespace <span class="mono">openshell</span> with its own volume (EBS on EKS), plus a one-off PKI job that makes the mTLS certificates.</div></div>
+<div class="card"><h3>Per sandbox: two pods</h3><div class="muted">In v0.1.9 each sandbox is a workload pod (the agent) and a supervisor pod (the guard), created by the Agent Sandbox controller from the gateway's Sandbox resource. Nothing is shared between sandboxes.</div></div>
+<div class="card"><h3>Always on</h3><div class="muted">A sandbox's pods run until you stop or delete it. There is no sleep and wake: 100 agents means 100 sandboxes running. That is the cost trade-off against Substrate.</div></div>
+<div class="card"><h3>The fence needs a CNI that enforces NetworkPolicy</h3><div class="muted">Calico on kind, VPC CNI with <span class="mono">enableNetworkPolicy=true</span> on EKS. Without it the workload could bypass the supervisor.</div></div>
+<div class="card"><h3>Isolation strength</h3><div class="muted">Plain containers plus Landlock, seccomp, non-root, no service-account token. Add a gVisor runtime class for a kernel boundary (strong walls + strict guard).</div></div>
+</div>
+</section>
+
+<section id="components"><h2>Every component and what it can do</h2><p class="muted">Lab facts from v0.1.9 runs; component roles also from upstream docs/about/architecture.mdx.</p>
+<div class="tablewrap"><table><tr><th>Component</th><th>Runs as</th><th>Capabilities</th></tr>
+<tr><td><b>openshell CLI</b></td><td>Your laptop / CI</td><td><span class="mono">gateway add/select</span>, <span class="mono">status</span>, <span class="mono">sandbox create/get/list/exec/connect/delete</span>, <span class="mono">policy set</span> (live update), <span class="mono">provider create</span>, <span class="mono">logs</span>. Gateways registered under <span class="mono">~/.config/openshell/gateways/&lt;name&gt;/</span>.</td></tr>
+<tr><td><b>Gateway</b></td><td>StatefulSet (Helm chart <span class="mono">oci://ghcr.io/nvidia/openshell/helm-chart</span> 0.1.9, marked experimental)</td><td>Authenticates users (mTLS client certs; OIDC with <span class="mono">server.oidc.issuer/audience</span>). Stores sandboxes, policies and provider credentials. Validates policies before a sandbox starts. Creates sandboxes through the Kubernetes compute driver. Delivers policy and credentials to supervisors. SSH / exec tunnel into sandboxes.</td></tr>
+<tr><td><b>Agent Sandbox controller</b></td><td>Deployment in <span class="mono">agent-sandbox-system</span> (kubernetes-sigs v1.0.3)</td><td>Reconciles the <span class="mono">Sandbox</span> custom resource into pods. Required by OpenShell's Kubernetes driver.</td></tr>
+<tr><td><b>Supervisor</b></td><td>Pod per sandbox (trusted side)</td><td>Checks every connection against the policy: OPA rules for host, port and binary; an L7 engine for <span class="mono">protocol: rest</span> (method and path). Resolves DNS for the agent. Adds provider credentials only to approved requests. Writes OCSF allow/deny events. Freezes the agent if its link drops (fail closed).</td></tr>
+<tr><td><b>Workload pod (sandbox)</b></td><td>Pod per sandbox (untrusted side)</td><td>Runs your image as one non-root user (uid 1500 in our image) with no capabilities. Landlock limits files, seccomp hands every network open to the supervisor. Identifies the real program making each request from <span class="mono">/proc</span>.</td></tr>
+<tr><td><b>Policy</b></td><td>YAML, stored in the gateway</td><td>Filesystem read-only and read-write paths, Landlock mode, named network rules with endpoints (host, port, protocol, enforcement, access) and the binaries allowed to use them. Updated live with <span class="mono">openshell policy set</span>.</td></tr>
+<tr><td><b>Providers</b></td><td>Records in the gateway</td><td>Store an API key once; the supervisor injects it into requests to the matching endpoint. The agent sees a placeholder, never the key.</td></tr>
+<tr><td><b>NetworkPolicy + CNI</b></td><td>Kubernetes objects OpenShell creates</td><td>Workload can reach only its supervisor; nothing else in or out.</td></tr>
+<tr><td><b>Anonymous telemetry</b></td><td>Inside gateway and supervisors</td><td>On by default upstream; our installs set <span class="mono">server.telemetryEnabled=false</span> and <span class="mono">OPENSHELL_TELEMETRY_ENABLED=false</span>.</td></tr></table></div>
+</section>
+
+<section id="vsopenshell"><h2>OpenShell vs gVisor vs Substrate</h2><p class="muted">Different layers. gVisor is the walls, OpenShell is a guard at each door, Substrate is a hotel that puts idle guests to sleep.</p>
+<div class="tablewrap"><table><tr><th></th><th>NVIDIA OpenShell</th><th>gVisor</th><th>Agent Substrate</th></tr>
+<tr><th>Question it answers</th><td>What may this agent do and talk to?</td><td>Can a hijacked agent break out onto the machine?</td><td>How do I run thousands of idle agents cheaply with their memory?</td></tr>
+<tr><th>Network rules</th><td>Per sandbox: host, port, program, HTTP method and path</td><td>None of its own</td><td>Per actor: hostname and port</td></tr>
+<tr><th>Secrets</th><td>Supervisor injects them</td><td>n/a</td><td>Egress gateway injects them</td></tr>
+<tr><th>Sleep / wake</th><td>No, always on</td><td>Can checkpoint a process</td><td>Yes, about 150 ms resume</td></tr>
+<tr><th>Use when</th><td>Each agent needs tight, auditable rules</td><td>You need a kernel boundary under either</td><td>Many mostly idle, stateful agents</td></tr></table></div>
+</section>
+
+<section id="policyfile"><h2>Reading a policy, line by line</h2><p class="muted">policies/research-readonly.yaml: the research agent may read the Python package index with curl, nothing else.</p>
+<div class="tablewrap"><table><tr><th>Line</th><th>Meaning</th></tr>
+<tr><td class="mono">filesystem_policy.read_only: [/bin, /usr, /lib, /proc, /etc, ...]</td><td>The agent can read system files but never change them (FS-01, FS-03).</td></tr>
+<tr><td class="mono">read_write: [/sandbox, /tmp, /dev/null]</td><td>Its workspace. Files here live as long as the sandbox (FS-02).</td></tr>
+<tr><td class="mono">landlock.compatibility: best_effort</td><td>Use Landlock if the node kernel supports it; do not fail on older kernels.</td></tr>
+<tr><td class="mono">network_policies.pypi_readonly</td><td>One named rule. Anything not matched by a rule is denied.</td></tr>
+<tr><td class="mono">host: pypi.org, port: 443</td><td>Exact destination. files.pythonhosted.org is a second endpoint for downloads.</td></tr>
+<tr><td class="mono">protocol: rest</td><td>The supervisor opens the TLS and inspects each HTTP request (L7), not just the connection.</td></tr>
+<tr><td class="mono">enforcement: enforce</td><td>Block on violation (the alternative only logs).</td></tr>
+<tr><td class="mono">access: read-only</td><td>GET, HEAD, OPTIONS only (NET-03 proves POST is refused). <span class="mono">read-write</span> adds writes; <span class="mono">full</span> allows everything and our linter rejects it (P027).</td></tr>
+<tr><td class="mono">binaries: [/usr/bin/curl]</td><td>Only curl may use this rule. <span class="mono">python3</span> calling pypi.org is denied (NET-09). Paths must be the real file, not a symlink.</td></tr></table></div>
+<p>The three lab policies: <span class="mono">deny-all</span> (no network at all), <span class="mono">research-readonly</span> (above), <span class="mono">llm-gateway</span> (python3 may call your AI gateway, key injected by a provider). <span class="mono">oslab lint</span> checks every policy in CI before it can be used.</p>
+</section>
+
+<section id="agent"><h2>The lab's "agent" and how the suite drives it</h2><p class="muted">There is no long-running agent service in this lab. The sandbox image is the attacker's toolbox, and the harness plays a hijacked agent.</p>
+<div class="grid">
+<div class="card"><h3>Image</h3><div class="muted"><span class="mono">sandbox-image/Dockerfile</span>: python:3.13-slim plus curl, user uid 1500. Built for linux/amd64 on EKS.</div></div>
+<div class="card"><h3>Start</h3><div class="muted"><span class="mono">--detach -- sleep infinity</span> keeps the sandbox Ready (a command that exits leaves it Completed). The harness waits for a canary command to work first.</div></div>
+<div class="card"><h3>Attack</h3><div class="muted">For each of the 18 cases, <span class="mono">openshell sandbox exec</span> runs a command (curl to metadata, write to /usr, POST to pypi.org...) and compares the result to the expected secure outcome. CLI failures retry 3 times and count as infra errors, not passes.</div></div>
+<div class="card"><h3>Result</h3><div class="muted"><span class="mono">evals/results/&lt;date&gt;-&lt;target&gt;/</span>: results.json, summary.md. Gate fails on any critical or high failure. Kind: 18/18, suite 39-42 s.</div></div>
+</div>
+<p>Sandbox names are prefixed <span class="mono">os</span> and kept at 19 characters or fewer (an upstream limit we hit). Cases are grouped by policy so one sandbox serves a group; POL-01 gets its own because it changes the policy live.</p>
+</section>
+
+<section id="sessions"><h2>Users, sessions and state</h2>
+<div class="grid">
+<div class="card"><h3>What the gateway knows</h3><div class="muted">Who called it (mTLS identity or OIDC user), each sandbox's name, ID, phase (Provisioning, Ready, Stopped, Completed, Error, Deleting), image, policy, attached providers and labels.</div></div>
+<div class="card"><h3>What it does not</h3><div class="muted">No end-user sessions, conversations or request history. Like Substrate, mapping a user or session to a sandbox is your app's job: one sandbox per agent, or per user for strict isolation, tagged with labels.</div></div>
+<div class="card"><h3>Memory</h3><div class="muted">No snapshots. Files under <span class="mono">/sandbox</span> stay while the sandbox exists; process memory is lost on restart. Context and history must be written to the workspace or to an external store the policy allows.</div></div>
+</div>
+</section>
+
+<section id="telemetry"><h2>Logs, metrics and traces</h2>
+<div class="tablewrap"><table><tr><th>Signal</th><th>What exists</th><th>How to get it out</th></tr>
+<tr><td><b>Allow / deny events</b></td><td>OCSF events from each supervisor: ALLOWED or DENIED, the program, the destination, the reason.</td><td><span class="mono">openshell logs &lt;sandbox&gt; --since 10m --source sandbox</span>. The supervisor also writes them under <span class="mono">/var/log/</span> in its own pod and to stderr; ship pod logs with Fluent Bit to CloudWatch or OpenSearch for history and SIEM.</td></tr>
+<tr><td><b>Agent output</b></td><td>Whatever the agent prints.</td><td><span class="mono">openshell sandbox exec</span> returns it; pod logs otherwise.</td></tr>
+<tr><td><b>Gateway metrics</b></td><td>Prometheus text format on a separate listener (<span class="mono">--metrics-port</span> / <span class="mono">OPENSHELL_METRICS_PORT</span>): API requests, database readiness, OCSF queue and drop counters.</td><td>Prometheus scrape, or ADOT to Amazon Managed Prometheus.</td></tr>
+<tr><td><b>Traces, OCSF over OTLP, agent traces</b></td><td>Gateway, drivers and supervisors export OTLP; supervisors can relay the agent's own traces without an egress rule.</td><td>Configured in the gateway config (<span class="mono">[openshell.gateway.otlp]</span>, Helm <span class="mono">gatewayConfig</span>).</td></tr></table></div>
+<p class="muted">Metrics and OTLP settings are from upstream docs on main (Nov 2026). Confirm the flags exist in the 0.1.9 chart before relying on them. Our lab scripts install no collector; the suite's results.json is the record today.</p>
+</section>
 <section id="verdict"><div class="grid" id="tiles"></div></section>
 <section id="arch"><h2>Architecture</h2><p class="muted">Tap any box for what it does and where it lives in the repo.</p>
 <div class="card diagram"><svg id="dg"></svg></div><div id="info">Tap a box.</div><div id="legend" style="margin-top:8px"></div></section>

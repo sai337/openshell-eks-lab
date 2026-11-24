@@ -23,3 +23,7 @@ Definition of done
 
 If a step fails, use the table at the end of docs/DEPLOYMENT.md and docs/RUNBOOK.md before
 changing code. Record any fix in docs/RUNBOOK.md.
+
+## Read first
+- docs/GUIDE.md explains every component, flow, command and signal in plain words. Use it to explain results to the owner.
+- docs/DEPLOYMENT.md is the exact EKS procedure. Personal lab AWS account only; destroy when done.
