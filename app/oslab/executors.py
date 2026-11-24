@@ -79,17 +79,22 @@ class OpenShellExecutor:
             time.sleep(3)
         raise RuntimeError(f"sandbox {name} never became ready: {last.output if last else ''}")
 
-    def exec(self, name: str, command: str) -> ExecResult:
-        try:
-            r = self._run(
-                ["sandbox", "exec", "-n", name, "--no-login-shell", "--", "/bin/bash", "-c", command],
-                check=False,
-                timeout=90,
-            )
-        except subprocess.TimeoutExpired:
-            return ExecResult(124, "timed out", 90.0)
-        infra = r.rc != 0 and is_cli_failure(r.output)
-        return ExecResult(r.rc, r.output, r.seconds, infra)
+    def exec(self, name: str, command: str, attempts: int = 3) -> ExecResult:
+        r = None
+        for attempt in range(attempts):
+            try:
+                r = self._run(
+                    ["sandbox", "exec", "-n", name, "--no-login-shell", "--", "/bin/bash", "-c", command],
+                    check=False,
+                    timeout=90,
+                )
+            except subprocess.TimeoutExpired:
+                return ExecResult(124, "timed out", 90.0)
+            if not (r.rc != 0 and is_cli_failure(r.output)):
+                return ExecResult(r.rc, r.output, r.seconds, False)
+            # The CLI failed before the command ran (e.g. a gateway keep-alive timeout): safe to retry.
+            time.sleep(2 * (attempt + 1))
+        return ExecResult(r.rc, r.output, r.seconds, True)
 
     def policy_update(self, name: str, rule_name: str, binary: str, endpoint: str) -> None:
         self._run(
